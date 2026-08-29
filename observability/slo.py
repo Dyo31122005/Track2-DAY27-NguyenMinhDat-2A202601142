@@ -35,17 +35,57 @@ def evaluate_multiwindow_burn(
     *,
     short_window_burn: float,
     long_window_burn: float,
-    policy: str = "starter",
+    policy: str = "google_sre",
+    critical_threshold: float = 14.4,
+    warning_threshold: float = 6.0,
 ) -> dict[str, Any]:
-    """TODO(student): implement a real multi-window burn-rate policy.
+    """Two-window burn-rate policy, modeled on Google's SRE workbook official
+    paging table (https://sre.google/workbook/alerting-on-slos/): pair a
+    short window (e.g. 5m/30m) with a longer one (e.g. 1h/6h) over the same
+    metric. The workbook defines **two paging tiers**, not one page + one
+    silent ticket tier:
 
-    Starter intentionally never pages. Hidden evaluation contains cases that
-    require distinguishing sustained fast burn from a transient spike.
+    - critical (page): BOTH windows >= 14.4x -- a fast burn that would
+      exhaust 2% of a 30-day error budget within 1h if sustained.
+    - warning (page): BOTH windows >= 6.0x (but not both >= 14.4x) -- a
+      slower sustained burn (5% of budget in 6h). Still a real,
+      budget-threatening burn, just lower urgency than the fast tier -- the
+      workbook pages for this too, it isn't a "maybe, file a ticket" case.
+    - info / no page: everything else. Requiring *both* windows to agree at
+      a tier is exactly what tells a transient spike (short window high,
+      long window never moved -- or has already recovered) apart from a
+      genuinely sustained burn; a short-only or long-only signal does not
+      page at any tier.
     """
+    if policy != "google_sre":
+        raise ValueError(f"Unsupported policy: {policy}")
+
+    short = float(short_window_burn)
+    long_ = float(long_window_burn)
+
+    if short >= critical_threshold and long_ >= critical_threshold:
+        page, severity = True, "critical"
+        reason = f"sustained fast burn: short={short:.2f} and long={long_:.2f} both >= {critical_threshold} -- page now"
+    elif short >= warning_threshold and long_ >= warning_threshold:
+        page, severity = True, "warning"
+        reason = (
+            f"sustained burn: short={short:.2f} and long={long_:.2f} both >= {warning_threshold} "
+            f"(below the {critical_threshold} fast-burn tier) -- page, lower urgency"
+        )
+    elif short >= warning_threshold:
+        page, severity = False, "info"
+        reason = f"transient spike: short={short:.2f} is high but long={long_:.2f} never sustained -- no page"
+    elif long_ >= warning_threshold:
+        page, severity = False, "info"
+        reason = f"long window was elevated (long={long_:.2f}) but short window has recovered (short={short:.2f}) -- no page"
+    else:
+        page, severity = False, "info"
+        reason = f"burn rate nominal: short={short:.2f}, long={long_:.2f}"
+
     return {
-        "page": False,
-        "severity": "info",
-        "reason": "starter_policy_not_implemented",
-        "short_window_burn": short_window_burn,
-        "long_window_burn": long_window_burn,
+        "page": page,
+        "severity": severity,
+        "reason": reason,
+        "short_window_burn": short,
+        "long_window_burn": long_,
     }

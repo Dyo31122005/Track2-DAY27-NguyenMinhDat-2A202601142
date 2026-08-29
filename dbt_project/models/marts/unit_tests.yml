@@ -1,0 +1,49 @@
+# dbt unit tests exercise fct_daily_revenue's SQL LOGIC against fixed,
+# hand-written input rows -- they do not touch the real seeds/warehouse.
+# This is what makes them different from not_null/unique/accepted_values
+# generic data tests (see schema.yml): those check the QUALITY of whatever
+# data happens to be sitting in a table today; a unit test checks that the
+# TRANSFORMATION does the right computation for a scenario we choose,
+# including edge cases (like a duplicate active customer) that today's data
+# may not currently contain at all.
+
+unit_tests:
+  - name: completed_orders_sum_to_expected_revenue
+    description: >
+      Baseline/control case: one active customer, two completed orders on the
+      same day -> revenue is a plain sum, row count is a plain count.
+    model: fct_daily_revenue
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - {order_id: 1, customer_id: C0001, amount_usd: 100.0, status: completed, order_date: '2026-08-01'}
+          - {order_id: 2, customer_id: C0001, amount_usd: 70.0, status: completed, order_date: '2026-08-01'}
+      - input: ref('stg_customers')
+        rows:
+          - {customer_id: C0001, is_active: true, valid_from: '2026-01-01'}
+    expect:
+      rows:
+        - {order_date: '2026-08-01', completed_order_rows: 2, daily_revenue: 170.0}
+
+  - name: expect_no_revenue_inflation_from_duplicate_active_customer
+    description: >
+      Strong-challenge (SCD) case: the customer dimension is broken and has
+      TWO rows marked is_active = true for the same customer_id (e.g. a bad
+      SCD-2 close-out). A naive join fans the single completed order out to
+      two rows, doubling completed_order_rows and daily_revenue. This test
+      pins the correct, non-inflated output so that regression is caught
+      immediately instead of showing up as a silently wrong CEO dashboard
+      number.
+    model: fct_daily_revenue
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - {order_id: 10, customer_id: C0099, amount_usd: 100.0, status: completed, order_date: '2026-08-02'}
+      - input: ref('stg_customers')
+        rows:
+          # Two "active" versions of the same customer -- the SCD bug.
+          - {customer_id: C0099, is_active: true, valid_from: '2026-01-01'}
+          - {customer_id: C0099, is_active: true, valid_from: '2026-06-01'}
+    expect:
+      rows:
+        - {order_date: '2026-08-02', completed_order_rows: 1, daily_revenue: 100.0}

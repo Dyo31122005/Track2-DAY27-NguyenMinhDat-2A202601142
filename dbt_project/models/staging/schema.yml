@@ -11,6 +11,13 @@ models:
       - name: customer_id
         data_tests:
           - not_null
+          # Generic test #1 (relationship): every order must point at a real
+          # customer. An orphaned customer_id here would silently drop out of
+          # fct_daily_revenue's join and undercount revenue with no SQL error.
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
       - name: currency
         data_tests:
           - accepted_values:
@@ -23,7 +30,15 @@ models:
                 values: ['pending', 'completed', 'refunded', 'cancelled']
 
   - name: stg_customers
+    description: Customer dimension (SCD-2 style; is_active marks the current version).
     columns:
       - name: customer_id
         data_tests:
           - not_null
+      - name: tier
+        data_tests:
+          # Generic test #2 (accepted_values): catches an unexpected/new tier
+          # value from upstream before it reaches reporting.
+          - accepted_values:
+              arguments:
+                values: ['basic', 'silver', 'gold']

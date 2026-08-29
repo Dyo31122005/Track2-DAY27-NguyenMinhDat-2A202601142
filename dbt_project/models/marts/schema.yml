@@ -7,6 +7,10 @@ models:
       - name: order_date
         data_tests:
           - not_null
+          # Generic test #3 (unique): the model is one row per day. A repeated
+          # order_date is a grain break (e.g. a fan-out join) even though every
+          # individual column would still look "valid" on its own.
+          - unique
       - name: daily_revenue
         data_tests:
           - not_null

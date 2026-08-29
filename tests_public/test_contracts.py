@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import pandas as pd
 
@@ -8,6 +9,14 @@ CONTRACT = ROOT / "contracts" / "orders_contract.yaml"
 
 
 def healthy_df():
+    # Timestamps are anchored to "now" (not hardcoded) so the freshness check
+    # (updated_at vs max_delay_minutes) stays healthy no matter when the
+    # suite runs, same convention as scripts/reset_lab.py.
+    now = datetime.now(timezone.utc)
+
+    def iso(minutes_ago: float) -> str:
+        return (now - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     return pd.DataFrame([
         {
             "order_id": 1,
@@ -15,8 +24,8 @@ def healthy_df():
             "amount": 10.0,
             "currency": "USD",
             "status": "completed",
-            "created_at": "2026-08-28T10:00:00Z",
-            "updated_at": "2026-08-28T10:05:00Z",
+            "created_at": iso(10),
+            "updated_at": iso(5),
         },
         {
             "order_id": 2,
@@ -24,8 +33,8 @@ def healthy_df():
             "amount": 20.0,
             "currency": "USD",
             "status": "pending",
-            "created_at": "2026-08-28T10:01:00Z",
-            "updated_at": "2026-08-28T10:06:00Z",
+            "created_at": iso(9),
+            "updated_at": iso(4),
         },
     ])
 
